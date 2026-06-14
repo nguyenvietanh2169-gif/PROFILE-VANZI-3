@@ -1,0 +1,47 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Global Reset */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body, #root {
+  background-color: #0C0C0C;
+  color: #D7E2EA;
+  font-family: 'Kanit', sans-serif;
+  min-height: 100vh;
+}
+
+/* Custom class for hero gradient heading */
+.hero-heading {
+  background: linear-gradient(180deg, #646973 0%, #BBCCD7 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* 3D Floating Animation for Gallery Cards */
+@keyframes galleryFloat {
+  0%, 100% {
+    transform: translateY(0);
+    box-shadow: 0 10px 20px -5px rgba(12, 12, 12, 0.15), 0 6px 6px -5px rgba(12, 12, 12, 0.1);
+  }
+  50% {
+    transform: translateY(-8px);
+    box-shadow: 0 20px 30px -5px rgba(12, 12, 12, 0.3), 0 10px 15px -8px rgba(12, 12, 12, 0.2);
+  }
+}
+
+.gallery-float {
+  animation: galleryFloat 6s ease-in-out infinite;
+  transition: transform 0.5s ease-out, box-shadow 0.5s ease-out;
+}
+
+.gallery-float:hover {
+  animation-play-state: paused;
+  transform: translateY(-14px) scale(1.03) !important;
+  box-shadow: 0 30px 45px -10px rgba(12, 12, 12, 0.45), 0 15px 20px -10px rgba(12, 12, 12, 0.3) !important;
+}
