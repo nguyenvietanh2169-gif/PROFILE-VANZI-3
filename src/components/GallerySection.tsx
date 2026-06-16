@@ -2,42 +2,11 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { FadeIn } from './FadeIn';
 import { X, ChevronLeft, ChevronRight, Maximize2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-
-const GALLERY_IMAGES = [
-  {
-    src: "/gallery/vanzi f1 edit.jpg",
-    title: "DJ Deck Control",
-    category: "Performance"
-  },
-  {
-    src: "/gallery/IMG_9569.jpg",
-    title: "Studio Session",
-    category: "Production"
-  },
-
-  {
-    src: "/gallery/2959F730-64B7-41BD-8620-E6D494362380.jpg",
-    title: "Sound Check",
-    category: "Backstage"
-  },
-  {
-    src: "/gallery/616454703_3834944400133424_9041727728842679266_n.jpg",
-    title: "Neon Club Vibe",
-    category: "Live Set"
-  },
-  {
-    src: "/gallery/IMG_9312.jpg",
-    title: "EP Portrait",
-    category: "Promo"
-  },
-  {
-    src: "/gallery/anh vanzi 12.jpg",
-    title: "Backstage Prep",
-    category: "Behind the Scenes"
-  }
-];
+import { getImageAssets } from '../utils/storage';
+import type { GalleryImage } from '../utils/storage';
 
 export const GallerySection: React.FC = () => {
+  const [galleryImages] = useState<GalleryImage[]>(() => getImageAssets().gallery);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
 
   const openLightbox = useCallback((index: number) => {
@@ -52,17 +21,17 @@ export const GallerySection: React.FC = () => {
     if (e) e.stopPropagation();
     setLightboxIndex((prevIndex) => {
       if (prevIndex === null) return null;
-      return prevIndex === GALLERY_IMAGES.length - 1 ? 0 : prevIndex + 1;
+      return prevIndex === galleryImages.length - 1 ? 0 : prevIndex + 1;
     });
-  }, []);
+  }, [galleryImages.length]);
 
   const prevImage = useCallback((e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     setLightboxIndex((prevIndex) => {
       if (prevIndex === null) return null;
-      return prevIndex === 0 ? GALLERY_IMAGES.length - 1 : prevIndex - 1;
+      return prevIndex === 0 ? galleryImages.length - 1 : prevIndex - 1;
     });
-  }, []);
+  }, [galleryImages.length]);
 
   // Handle body scroll locking
   useEffect(() => {
@@ -109,7 +78,7 @@ export const GallerySection: React.FC = () => {
 
         {/* Gallery Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8">
-          {GALLERY_IMAGES.map((img, i) => {
+          {galleryImages.map((img, i) => {
             const isTallCard = i === 1 || i === 4;
             return (
               <FadeIn
@@ -202,21 +171,21 @@ export const GallerySection: React.FC = () => {
               className="relative max-w-5xl max-h-[80vh] w-full flex flex-col items-center cursor-default"
             >
               <img 
-                src={GALLERY_IMAGES[lightboxIndex].src} 
-                alt={GALLERY_IMAGES[lightboxIndex].title} 
+                src={galleryImages[lightboxIndex].src} 
+                alt={galleryImages[lightboxIndex].title} 
                 className="max-w-full max-h-[72vh] object-contain rounded-2xl shadow-2xl border border-white/10"
               />
               
               {/* Caption metadata */}
               <div className="mt-4 sm:mt-6 text-center">
                 <span className="text-[#F2BF00] text-xs uppercase font-bold tracking-widest">
-                  {GALLERY_IMAGES[lightboxIndex].category}
+                  {galleryImages[lightboxIndex].category}
                 </span>
                 <h4 className="text-white text-lg sm:text-2xl font-black uppercase tracking-wide mt-1">
-                  {GALLERY_IMAGES[lightboxIndex].title}
+                  {galleryImages[lightboxIndex].title}
                 </h4>
                 <p className="text-white/40 text-[10px] sm:text-xs font-mono mt-1">
-                  {lightboxIndex + 1} / {GALLERY_IMAGES.length}
+                  {lightboxIndex + 1} / {galleryImages.length}
                 </p>
               </div>
             </motion.div>

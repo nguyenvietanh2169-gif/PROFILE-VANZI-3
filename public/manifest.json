@@ -1,0 +1,17 @@
+{
+  "short_name": "Vanzi",
+  "name": "VANZI ON DA BEAT",
+  "icons": [
+    {
+      "src": "/vanzi-logo-white.png",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "any maskable"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#0C0C0C",
+  "theme_color": "#F2BF00",
+  "display": "standalone",
+  "orientation": "portrait"
+}

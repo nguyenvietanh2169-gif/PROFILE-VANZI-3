@@ -45,3 +45,61 @@ html, body, #root {
   transform: translateY(-14px) scale(1.03) !important;
   box-shadow: 0 30px 45px -10px rgba(12, 12, 12, 0.45), 0 15px 20px -10px rgba(12, 12, 12, 0.3) !important;
 }
+
+/* Song Title Marquee Animation */
+@keyframes titleMarquee {
+  0% { transform: translate3d(0, 0, 0); }
+  15% { transform: translate3d(0, 0, 0); }
+  50% { transform: translate3d(-35%, 0, 0); }
+  65% { transform: translate3d(-35%, 0, 0); }
+  100% { transform: translate3d(0, 0, 0); }
+}
+
+.animate-marquee-text {
+  display: inline-block;
+  animation: titleMarquee 8s ease-in-out infinite;
+}
+
+/* Liquid Glass iOS Style */
+@keyframes liquidBlob1 {
+  0%, 100% {
+    transform: translate(0, 0) scale(1) rotate(0deg);
+  }
+  33% {
+    transform: translate(15px, -8px) scale(1.1) rotate(120deg);
+  }
+  66% {
+    transform: translate(-8px, 12px) scale(0.9) rotate(240deg);
+  }
+}
+
+@keyframes liquidBlob2 {
+  0%, 100% {
+    transform: translate(0, 0) scale(1) rotate(0deg);
+  }
+  33% {
+    transform: translate(-12px, 8px) scale(0.95) rotate(-120deg);
+  }
+  66% {
+    transform: translate(8px, -12px) scale(1.05) rotate(-240deg);
+  }
+}
+
+.animate-liquid-blob-1 {
+  animation: liquidBlob1 6s ease-in-out infinite;
+}
+
+.animate-liquid-blob-2 {
+  animation: liquidBlob2 8s ease-in-out infinite;
+}
+
+.liquid-glass-active {
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 
+    inset 0 1px 1px rgba(255, 255, 255, 0.15),
+    inset 0 -1px 1px rgba(0, 0, 0, 0.25),
+    0 8px 32px 0 rgba(0, 0, 0, 0.4);
+}

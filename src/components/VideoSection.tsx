@@ -27,19 +27,13 @@ export const VideoSection: React.FC = () => {
         
         {/* Section Header */}
         <div className="text-center mb-16 sm:mb-20 md:mb-24 flex flex-col items-center">
-          <FadeIn delay={0} y={40} as="span" className="text-xs font-semibold tracking-[0.35em] text-neon-orange uppercase mb-3 block">
-            LIVE REEL
-          </FadeIn>
           <FadeIn 
-            delay={0.1} 
+            delay={0} 
             y={40} 
             as="h2" 
             className="hero-heading font-black uppercase text-center text-[clamp(2.5rem,8vw,100px)] mb-4 leading-none"
           >
             PERFORMANCE VIDEO
-          </FadeIn>
-          <FadeIn delay={0.2} y={20}>
-            <div className="w-16 h-[2px] bg-gradient-to-r from-neon-orange to-neon-cyan" />
           </FadeIn>
         </div>
 

@@ -1,24 +1,9 @@
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { FadeIn } from './FadeIn';
+import { getImageAssets } from '../utils/storage';
 
-const SHOW_IMAGES = [
-  "/gallery/show/IMG_0097.JPG",
-  "/gallery/show/484809765_960371929623079_2202573474252920259_n.jpg",
-  "/gallery/show/484890275_961088009551471_8778091926097455371_n.jpg",
-  "/gallery/show/IMG_0098.JPG",
-  "/gallery/show/484993629_959867376340201_3404273182109211280_n.jpg",
-  "/gallery/show/485004195_960246179635654_450419896515082030_n.jpg",
-  "/gallery/show/IMG_0100.JPG",
-  "/gallery/show/485579790_960718872921718_4885328115208143225_n.jpg",
-  "/gallery/show/485727424_3562261694068364_1764924610546573723_n.jpg",
-  "/gallery/show/IMG_0103.JPG",
-  "/gallery/show/IMG_1465.JPG",
-  "/gallery/show/135552272_2504632613164616_2798930206340704749_n.jpg",
-  "/gallery/show/IMG_5087.JPG"
-];
-
-// Aesthetic names and locations for each gig photo
+// Aesthetic names and locations for each gig photo (still used in Lightbox modal)
 const GIG_DETAILS = [
   { title: "Main Stage Energy", location: "Hanoi Club Tour" },
   { title: "Neon Nights", location: "Tiger Show" },
@@ -35,48 +20,58 @@ const GIG_DETAILS = [
   { title: "Closing Set", location: "Retro Stadium" }
 ];
 
+// Split photos into two rows and duplicate them twice for a rich, scrollable list
+
 export const StageMomentsSection: React.FC = () => {
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const [isDragging, setIsDragging] = useState(false);
-  const [startX, setStartX] = useState(0);
-  const [scrollLeft, setScrollLeft] = useState(0);
+  const [showImages] = useState<string[]>(() => getImageAssets().stageMoments);
+
+  // Distribute indices to row1 and row2
+  const row1Indices: number[] = [];
+  const row2Indices: number[] = [];
+  showImages.forEach((_, idx) => {
+    if (idx % 2 === 0) {
+      row1Indices.push(idx);
+    } else {
+      row2Indices.push(idx);
+    }
+  });
+
+  // Repeat the images to make a rich scrollable list
+  const row1Items = row1Indices.length > 0 ? [...row1Indices, ...row1Indices, ...row1Indices] : [];
+  const row2Items = row2Indices.length > 0 ? [...row2Indices, ...row2Indices, ...row2Indices] : [];
+
+  const sectionRef = useRef<HTMLDivElement>(null);
+  const row1Ref = useRef<HTMLDivElement>(null);
+  const row2Ref = useRef<HTMLDivElement>(null);
+
+  const [row1Dragging, setRow1Dragging] = useState(false);
+  const [row2Dragging, setRow2Dragging] = useState(false);
+
+  // Parallax / Translation offsets
+  const targetX1 = useRef(0);
+  const currentX1 = useRef(0);
+
+  const targetX2 = useRef(0);
+  const currentX2 = useRef(0);
+
+  const maxTravel1 = useRef(0);
+  const maxTravel2 = useRef(0);
+
+  const activeDrag = useRef<'row1' | 'row2' | null>(null);
+  const dragStartX = useRef(0);
+  const dragStartOffset = useRef(0);
+  const dragHasMoved = useRef(false);
   
   // Lightbox State
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
 
-  // Drag-to-scroll handlers
-  const handleMouseDown = (e: React.MouseEvent) => {
-    if (!scrollRef.current) return;
-    setIsDragging(true);
-    setStartX(e.pageX - scrollRef.current.offsetLeft);
-    setScrollLeft(scrollRef.current.scrollLeft);
-  };
+  const handlePrev = useCallback(() => {
+    setLightboxIndex((prev) => (prev !== null ? (prev === 0 ? showImages.length - 1 : prev - 1) : null));
+  }, [showImages.length]);
 
-  const handleMouseLeave = () => {
-    setIsDragging(false);
-  };
-
-  const handleMouseUp = () => {
-    setIsDragging(false);
-  };
-
-  const handleMouseMove = (e: React.MouseEvent) => {
-    if (!isDragging || !scrollRef.current) return;
-    e.preventDefault();
-    const x = e.pageX - scrollRef.current.offsetLeft;
-    const walk = (x - startX) * 1.5;
-    scrollRef.current.scrollLeft = scrollLeft - walk;
-  };
-
-  // Scroll buttons
-  const scroll = (direction: 'left' | 'right') => {
-    if (!scrollRef.current) return;
-    const scrollAmount = window.innerWidth * 0.4;
-    scrollRef.current.scrollTo({
-      left: scrollRef.current.scrollLeft + (direction === 'left' ? -scrollAmount : scrollAmount),
-      behavior: 'smooth'
-    });
-  };
+  const handleNext = useCallback(() => {
+    setLightboxIndex((prev) => (prev !== null ? (prev === showImages.length - 1 ? 0 : prev + 1) : null));
+  }, [showImages.length]);
 
   // Keyboard navigation for Lightbox
   useEffect(() => {
@@ -90,18 +85,174 @@ export const StageMomentsSection: React.FC = () => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [lightboxIndex]);
+  }, [lightboxIndex, handleNext, handlePrev]);
 
-  const handlePrev = () => {
-    setLightboxIndex((prev) => (prev !== null ? (prev === 0 ? SHOW_IMAGES.length - 1 : prev - 1) : null));
+  // Update widths for scroll limits
+  const updateWidths = () => {
+    if (row1Ref.current && row2Ref.current) {
+      maxTravel1.current = Math.max(0, row1Ref.current.scrollWidth - row1Ref.current.parentElement!.clientWidth);
+      maxTravel2.current = Math.max(0, row2Ref.current.scrollWidth - row2Ref.current.parentElement!.clientWidth);
+    }
   };
 
-  const handleNext = () => {
-    setLightboxIndex((prev) => (prev !== null ? (prev === SHOW_IMAGES.length - 1 ? 0 : prev + 1) : null));
+  // Drag Gesture Handlers
+  const handleDragStart = (row: 'row1' | 'row2', clientX: number) => {
+    activeDrag.current = row;
+    dragStartX.current = clientX;
+    dragHasMoved.current = false;
+    
+    updateWidths();
+
+    if (row === 'row1') {
+      setRow1Dragging(true);
+      dragStartOffset.current = targetX1.current;
+    } else {
+      setRow2Dragging(true);
+      dragStartOffset.current = targetX2.current;
+    }
   };
+
+  const handleDragMove = (clientX: number) => {
+    if (!activeDrag.current) return;
+    const deltaX = clientX - dragStartX.current;
+    
+    if (Math.abs(deltaX) > 5) {
+      dragHasMoved.current = true;
+    }
+
+    const nextOffset = dragStartOffset.current + deltaX;
+
+    if (activeDrag.current === 'row1') {
+      const clamped = Math.max(-maxTravel1.current, Math.min(0, nextOffset));
+      targetX1.current = clamped;
+
+      if (maxTravel1.current > 0 && maxTravel2.current > 0) {
+        const ratio = -clamped / maxTravel1.current;
+        targetX2.current = -((1 - ratio) * maxTravel2.current);
+      }
+    } else {
+      const clamped = Math.max(-maxTravel2.current, Math.min(0, nextOffset));
+      targetX2.current = clamped;
+
+      if (maxTravel1.current > 0 && maxTravel2.current > 0) {
+        const ratio = -clamped / maxTravel2.current;
+        targetX1.current = -((1 - ratio) * maxTravel1.current);
+      }
+    }
+  };
+
+  const handleDragEnd = () => {
+    activeDrag.current = null;
+    setRow1Dragging(false);
+    setRow2Dragging(false);
+  };
+
+  // Window-level move and end listeners to make dragging robust
+  useEffect(() => {
+    const handleMove = (e: MouseEvent) => {
+      handleDragMove(e.clientX);
+    };
+    const handleTouchMove = (e: TouchEvent) => {
+      if (e.touches.length > 0) {
+        handleDragMove(e.touches[0].clientX);
+      }
+    };
+    const handleEnd = () => {
+      handleDragEnd();
+    };
+
+    if (row1Dragging || row2Dragging) {
+      window.addEventListener('mousemove', handleMove);
+      window.addEventListener('mouseup', handleEnd);
+      window.addEventListener('touchmove', handleTouchMove, { passive: false });
+      window.addEventListener('touchend', handleEnd);
+      window.addEventListener('touchcancel', handleEnd);
+    }
+
+    return () => {
+      window.removeEventListener('mousemove', handleMove);
+      window.removeEventListener('mouseup', handleEnd);
+      window.removeEventListener('touchmove', handleTouchMove);
+      window.removeEventListener('touchend', handleEnd);
+      window.removeEventListener('touchcancel', handleEnd);
+    };
+  }, [row1Dragging, row2Dragging]);
+
+  // Main tick loop for LERP interpolation and event handlers
+  useEffect(() => {
+    updateWidths();
+    window.addEventListener('resize', updateWidths);
+
+    // Initial positioning of Row 2 at the far right
+    const initTimer = setTimeout(() => {
+      updateWidths();
+      targetX2.current = -maxTravel2.current;
+      currentX2.current = -maxTravel2.current;
+      if (row2Ref.current) {
+        row2Ref.current.style.transform = `translate3d(${-maxTravel2.current}px, 0px, 0px)`;
+      }
+    }, 150);
+
+    let animId: number;
+    const tick = () => {
+      const diff1 = targetX1.current - currentX1.current;
+      const diff2 = targetX2.current - currentX2.current;
+
+      if (Math.abs(diff1) > 0.05) {
+        currentX1.current += diff1 * 0.15; // Smooth interpolation speed
+        if (row1Ref.current) {
+          row1Ref.current.style.transform = `translate3d(${currentX1.current}px, 0px, 0px)`;
+        }
+      }
+      if (Math.abs(diff2) > 0.05) {
+        currentX2.current += diff2 * 0.15;
+        if (row2Ref.current) {
+          row2Ref.current.style.transform = `translate3d(${currentX2.current}px, 0px, 0px)`;
+        }
+      }
+
+      animId = requestAnimationFrame(tick);
+    };
+
+    animId = requestAnimationFrame(tick);
+
+    return () => {
+      window.removeEventListener('resize', updateWidths);
+      cancelAnimationFrame(animId);
+      clearTimeout(initTimer);
+    };
+  }, []);
+
+  // Trackpad / Scroll Wheel Swipe Support
+  useEffect(() => {
+    const section = sectionRef.current;
+    if (!section) return;
+
+    const handleWheelEvent = (e: WheelEvent) => {
+      // If horizontal swipe is dominant, prevent vertical page scroll and translate rows
+      if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
+        e.preventDefault();
+        updateWidths();
+        const nextOffset = targetX1.current - e.deltaX;
+        const clamped = Math.max(-maxTravel1.current, Math.min(0, nextOffset));
+        
+        targetX1.current = clamped;
+        if (maxTravel1.current > 0 && maxTravel2.current > 0) {
+          const ratio = -clamped / maxTravel1.current;
+          targetX2.current = -((1 - ratio) * maxTravel2.current);
+        }
+      }
+    };
+
+    section.addEventListener('wheel', handleWheelEvent, { passive: false });
+    return () => {
+      section.removeEventListener('wheel', handleWheelEvent);
+    };
+  }, []);
 
   return (
     <section 
+      ref={sectionRef}
       id="stage-moments"
       className="relative py-24 sm:py-32 w-full overflow-hidden bg-[#0C0C0C] border-b border-white/5"
     >
@@ -111,91 +262,98 @@ export const StageMomentsSection: React.FC = () => {
 
       <div className="max-w-7xl mx-auto px-6 md:px-12 w-full">
         {/* Section Header */}
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 mb-16">
+        <div className="flex flex-col justify-start gap-6 mb-8">
           <div className="space-y-3">
-            <FadeIn delay={0} y={30} as="span" className="text-xs font-semibold tracking-[0.35em] text-neon-cyan uppercase block">
-              Behind The Decks
-            </FadeIn>
-            <FadeIn delay={0.1} y={30} as="h2" className="hero-heading font-black text-4xl md:text-5xl uppercase tracking-tight leading-none">
+            <FadeIn delay={0} y={30} as="h2" className="hero-heading font-black text-4xl md:text-5xl uppercase tracking-tight leading-none">
               Stage Moments
             </FadeIn>
-            <FadeIn delay={0.2} y={15}>
-              <div className="w-16 h-[2.5px] bg-gradient-to-r from-neon-cyan to-neon-orange" />
-            </FadeIn>
           </div>
-
-          {/* Nav Buttons for Desktop */}
-          <FadeIn delay={0.25} y={20} className="hidden md:flex gap-4" as="div">
-            <button 
-              onClick={() => scroll('left')}
-              className="w-12 h-12 rounded-full border border-white/10 bg-white/5 text-white flex items-center justify-center hover:bg-neon-cyan hover:text-black hover:border-transparent transition-all active:scale-95 cursor-pointer shadow-lg"
-              aria-label="Scroll left"
-            >
-              <ChevronLeft size={20} />
-            </button>
-            <button 
-              onClick={() => scroll('right')}
-              className="w-12 h-12 rounded-full border border-white/10 bg-white/5 text-white flex items-center justify-center hover:bg-neon-orange hover:text-black hover:border-transparent transition-all active:scale-95 cursor-pointer shadow-lg"
-              aria-label="Scroll right"
-            >
-              <ChevronRight size={20} />
-            </button>
-          </FadeIn>
         </div>
       </div>
 
       {/* Layered Horizontal Scroll Container */}
-      <div className="w-full relative px-4 md:px-8">
-        <div
-          ref={scrollRef}
-          onMouseDown={handleMouseDown}
-          onMouseLeave={handleMouseLeave}
-          onMouseUp={handleMouseUp}
-          onMouseMove={handleMouseMove}
-          className={`flex flex-row overflow-x-auto whitespace-nowrap py-16 px-6 sm:px-12 md:px-20 scrollbar-none select-none ${
-            isDragging ? 'cursor-grabbing' : 'cursor-grab'
-          } scroll-smooth`}
-        >
-          {SHOW_IMAGES.map((src, index) => {
-            // Apply slight rotation & height offset to create a layered "stacked gig photos" vibe
-            const rotationDegrees = (index % 4 === 0) ? -2.5 : (index % 4 === 1) ? 1.5 : (index % 4 === 2) ? -1 : 2.5;
-            const translateY = (index % 3 === 0) ? 8 : (index % 3 === 1) ? -5 : 4;
-            
-            return (
-              <div
-                key={index}
-                onClick={() => {
-                  if (!isDragging) setLightboxIndex(index);
-                }}
-                style={{
-                  transform: `rotate(${rotationDegrees}deg) translateY(${translateY}px)`,
-                  willChange: 'transform, box-shadow',
-                }}
-                className="inline-block relative w-[240px] sm:w-[280px] md:w-[310px] aspect-[3/4] bg-[#121215] border border-white/5 p-3 pb-8 rounded-2xl shadow-xl hover:rotate-0 hover:-translate-y-6 hover:z-40 hover:scale-105 hover:shadow-[0_20px_45px_rgba(0,240,255,0.2)] hover:border-neon-cyan/40 hover:bg-[#16161c] transition-all duration-500 ease-out flex-shrink-0 -ml-8 sm:-ml-12 md:-ml-14 first:ml-0 group cursor-pointer"
-              >
-                {/* Photo frame */}
-                <div className="w-full aspect-[4/5] rounded-xl overflow-hidden bg-[#0a0a0c] mb-4">
-                  <img
-                    src={src}
-                    alt={GIG_DETAILS[index]?.title || `Vanzi Gig ${index + 1}`}
-                    className="w-full h-full object-cover brightness-[0.85] group-hover:brightness-100 transition-all duration-500"
-                    draggable="false"
-                  />
-                </div>
+      <div className="w-full relative flex flex-col gap-6 md:gap-8 overflow-hidden py-4">
+        
+        {/* Row 1: Manual Drag to Scroll */}
+        <div className="w-full overflow-hidden px-6 sm:px-12 md:px-20 select-none">
+          <div
+            ref={row1Ref}
+            onMouseDown={(e) => handleDragStart('row1', e.clientX)}
+            onTouchStart={(e) => handleDragStart('row1', e.touches[0].clientX)}
+            onDragStart={(e) => e.preventDefault()}
+            style={{ willChange: 'transform' }}
+            className={`flex flex-row gap-6 sm:gap-8 md:gap-10 whitespace-nowrap transition-none select-none w-max ${
+              row1Dragging ? 'cursor-grabbing' : 'cursor-grab'
+            }`}
+          >
+            {row1Items.map((imageIndex, index) => {
+              const src = showImages[imageIndex];
+              if (!src) return null;
 
-                {/* Gig Details */}
-                <div className="px-1 text-left flex flex-col pointer-events-none">
-                  <span className="text-[10px] font-mono tracking-widest text-neon-orange uppercase mb-1">
-                    {GIG_DETAILS[index]?.location || "Live Gig"}
-                  </span>
-                  <h3 className="text-xs sm:text-sm font-bold uppercase text-white/90 group-hover:text-neon-cyan transition-colors truncate">
-                    {GIG_DETAILS[index]?.title || `Moments #${index + 1}`}
-                  </h3>
+              return (
+                <div
+                  key={`r1-${index}`}
+                  onClick={() => {
+                    if (!dragHasMoved.current) setLightboxIndex(imageIndex);
+                  }}
+                  onDragStart={(e) => e.preventDefault()}
+                  className="inline-block relative w-[180px] sm:w-[220px] md:w-[260px] aspect-[3/4] bg-[#121215] border border-white/5 p-2 rounded-2xl shadow-xl hover:-translate-y-2 hover:z-40 hover:scale-105 hover:shadow-[0_20px_45px_rgba(0,240,255,0.2)] hover:border-neon-cyan/40 hover:bg-[#16161c] transition-all duration-500 ease-out flex-shrink-0 group cursor-pointer select-none"
+                >
+                  {/* Photo frame */}
+                  <div className="w-full h-full rounded-xl overflow-hidden bg-[#0a0a0c] pointer-events-none select-none">
+                    <img
+                      src={src}
+                      alt={`Vanzi Gig ${imageIndex + 1}`}
+                      className="w-full h-full object-cover brightness-[0.85] group-hover:brightness-100 transition-all duration-500 pointer-events-none select-none"
+                      draggable="false"
+                    />
+                  </div>
                 </div>
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
         </div>
+
+        {/* Row 2: Manual Drag to Scroll */}
+        <div className="w-full overflow-hidden px-6 sm:px-12 md:px-20 select-none">
+          <div
+            ref={row2Ref}
+            onMouseDown={(e) => handleDragStart('row2', e.clientX)}
+            onTouchStart={(e) => handleDragStart('row2', e.touches[0].clientX)}
+            onDragStart={(e) => e.preventDefault()}
+            style={{ willChange: 'transform' }}
+            className={`flex flex-row gap-6 sm:gap-8 md:gap-10 whitespace-nowrap transition-none select-none w-max ${
+              row2Dragging ? 'cursor-grabbing' : 'cursor-grab'
+            }`}
+          >
+            {row2Items.map((imageIndex, index) => {
+              const src = showImages[imageIndex];
+              if (!src) return null;
+
+              return (
+                <div
+                  key={`r2-${index}`}
+                  onClick={() => {
+                    if (!dragHasMoved.current) setLightboxIndex(imageIndex);
+                  }}
+                  onDragStart={(e) => e.preventDefault()}
+                  className="inline-block relative w-[180px] sm:w-[220px] md:w-[260px] aspect-[3/4] bg-[#121215] border border-white/5 p-2 rounded-2xl shadow-xl hover:-translate-y-2 hover:z-40 hover:scale-105 hover:shadow-[0_20px_45px_rgba(0,240,255,0.2)] hover:border-neon-cyan/40 hover:bg-[#16161c] transition-all duration-500 ease-out flex-shrink-0 group cursor-pointer select-none"
+                >
+                  {/* Photo frame */}
+                  <div className="w-full h-full rounded-xl overflow-hidden bg-[#0a0a0c] pointer-events-none select-none">
+                    <img
+                      src={src}
+                      alt={`Vanzi Gig ${imageIndex + 1}`}
+                      className="w-full h-full object-cover brightness-[0.85] group-hover:brightness-100 transition-all duration-500 pointer-events-none select-none"
+                      draggable="false"
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
       </div>
 
       {/* Lightbox Modal */}
@@ -242,22 +400,22 @@ export const StageMomentsSection: React.FC = () => {
             className="relative max-w-full max-h-[80vh] aspect-auto border border-white/10 shadow-2xl flex flex-col items-center bg-[#0a0a0c] rounded-xl overflow-hidden"
           >
             <img
-              src={SHOW_IMAGES[lightboxIndex]}
-              alt={GIG_DETAILS[lightboxIndex]?.title}
+              src={showImages[lightboxIndex]}
+              alt={GIG_DETAILS[lightboxIndex]?.title || "Stage Moment"}
               className="max-w-full max-h-[72vh] md:max-h-[75vh] object-contain"
             />
             {/* Lightbox Footer Caption */}
             <div className="w-full bg-[#121215] py-4 px-6 border-t border-white/5 text-left flex justify-between items-center">
               <div>
                 <p className="text-[10px] font-mono tracking-widest text-neon-orange uppercase">
-                  {GIG_DETAILS[lightboxIndex]?.location}
+                  {GIG_DETAILS[lightboxIndex]?.location || "Live Set"}
                 </p>
                 <h4 className="text-sm sm:text-base font-black uppercase text-white tracking-wide">
-                  {GIG_DETAILS[lightboxIndex]?.title}
+                  {GIG_DETAILS[lightboxIndex]?.title || "Stage Moment"}
                 </h4>
               </div>
               <span className="text-[10px] font-mono text-white/40">
-                {lightboxIndex + 1} / {SHOW_IMAGES.length}
+                {lightboxIndex + 1} / {showImages.length}
               </span>
             </div>
           </div>

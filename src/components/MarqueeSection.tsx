@@ -1,25 +1,56 @@
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useEffect } from 'react';
 
 export const MarqueeSection: React.FC = () => {
   const sectionRef = useRef<HTMLDivElement>(null);
-  const [offset, setOffset] = useState(0);
+  const row1Ref = useRef<HTMLDivElement>(null);
+  const row2Ref = useRef<HTMLDivElement>(null);
+
+  const targetOffset = useRef(0);
+  const currentOffset = useRef(0);
 
   useEffect(() => {
     const handleScroll = () => {
       if (!sectionRef.current) return;
       const rect = sectionRef.current.getBoundingClientRect();
       const sectionTop = rect.top + window.scrollY;
-      const calculatedOffset = (window.scrollY - sectionTop + window.innerHeight) * 0.35;
-      setOffset(calculatedOffset);
+
+      // Only calculate if the section is currently visible in the viewport
+      const isVisible = rect.top < window.innerHeight && rect.bottom > 0;
+      if (!isVisible) return;
+
+      targetOffset.current = (window.scrollY - sectionTop + window.innerHeight) * 0.35;
     };
 
     window.addEventListener('scroll', handleScroll, { passive: true });
-    handleScroll();
     window.addEventListener('resize', handleScroll);
+    handleScroll(); // Initial calculation
+
+    // Smooth LERP animation loop running on GPU
+    let animId: number;
+    const tick = () => {
+      const diff = targetOffset.current - currentOffset.current;
+      
+      // Only update when there's actual motion, conserving mobile CPU/battery when idle
+      if (Math.abs(diff) > 0.05) {
+        currentOffset.current += diff * 0.1; // Smooth LERP speed
+
+        if (row1Ref.current) {
+          row1Ref.current.style.transform = `translate3d(${currentOffset.current - 300}px, 0px, 0px)`;
+        }
+        if (row2Ref.current) {
+          row2Ref.current.style.transform = `translate3d(${-(currentOffset.current + 600)}px, 0px, 0px)`;
+        }
+      }
+
+      animId = requestAnimationFrame(tick);
+    };
+
+    animId = requestAnimationFrame(tick);
 
     return () => {
       window.removeEventListener('scroll', handleScroll);
       window.removeEventListener('resize', handleScroll);
+      cancelAnimationFrame(animId);
     };
   }, []);
 
@@ -32,11 +63,9 @@ export const MarqueeSection: React.FC = () => {
         {/* Row 1: Moves RIGHT (translates offset - 300) - Displays Text */}
         <div className="overflow-hidden w-full flex">
           <div
-            style={{
-              transform: `translateX(${offset - 300}px)`,
-              willChange: 'transform',
-            }}
-            className="flex flex-row items-center whitespace-nowrap transition-transform duration-75 ease-out"
+            ref={row1Ref}
+            style={{ willChange: 'transform' }}
+            className="flex flex-row items-center whitespace-nowrap transition-none"
           >
             {Array.from({ length: 15 }).map((_, i) => (
               <span
@@ -52,11 +81,9 @@ export const MarqueeSection: React.FC = () => {
         {/* Row 2: Moves LEFT (translates -(offset - 300)) - Displays Text */}
         <div className="overflow-hidden w-full flex">
           <div
-            style={{
-              transform: `translateX(${-(offset - 300)}px)`,
-              willChange: 'transform',
-            }}
-            className="flex flex-row items-center whitespace-nowrap transition-transform duration-75 ease-out"
+            ref={row2Ref}
+            style={{ willChange: 'transform' }}
+            className="flex flex-row items-center whitespace-nowrap transition-none"
           >
             {Array.from({ length: 15 }).map((_, i) => (
               <span

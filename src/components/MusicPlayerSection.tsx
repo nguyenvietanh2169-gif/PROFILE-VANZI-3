@@ -1,55 +1,136 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Play, Pause, Volume2, SkipBack, SkipForward, Shuffle, Repeat, 
-  Search, Plus, Check
+  Search
 } from 'lucide-react';
 import { FadeIn } from './FadeIn';
-
-const TRACKS = [
-  {
-    title: "Body Rock (Mike Candys Edit)",
-    artist: "Mike Candys & Vanzi",
-    duration: "3:42",
-    durationSeconds: 222,
-    cover: "https://images.higgs.ai/?default=1&output=webp&url=https%3A%2F%2Fd8j0ntlcm91z4.cloudfront.net%2Fuser_38xzZboKViGWJOttwIXH07lWA1P%2Fhf_20260412_055344_5eff02e0-87a5-41ce-b64f-eb08da8f33db.png&w=1280&q=85"
-  },
-  {
-    title: "Aquarius (Trance Mix)",
-    artist: "CARYS",
-    duration: "4:15",
-    durationSeconds: 255,
-    cover: "https://images.higgs.ai/?default=1&output=webp&url=https%3A%2F%2Fd8j0ntlcm91z4.cloudfront.net%2Fuser_38xzZboKViGWJOttwIXH07lWA1P%2Fhf_20260412_055654_911201c5-36d9-4bc6-bac7-331adfce159f.png&w=1280&q=85"
-  },
-  {
-    title: "Lavender Haze (Vanzi Remix)",
-    artist: "Taylor Swift x Vanzi",
-    duration: "3:12",
-    durationSeconds: 192,
-    cover: "https://images.higgs.ai/?default=1&output=webp&url=https%3A%2F%2Fd8j0ntlcm91z4.cloudfront.net%2Fuser_38xzZboKViGWJOttwIXH07lWA1P%2Fhf_20260412_055759_963cfb0b-4bd1-4b0f-9d0a-09bd6cf95b2f.png&w=1280&q=85"
-  },
-  {
-    title: "Wildfire (Festival Mix)",
-    artist: "Klaas & Vanzi",
-    duration: "2:54",
-    durationSeconds: 174,
-    cover: "https://images.higgs.ai/?default=1&output=webp&url=https%3A%2F%2Fd8j0ntlcm91z4.cloudfront.net%2Fuser_38xzZboKViGWJOttwIXH07lWA1P%2Fhf_20260412_055451_e317bf2d-28d4-48cc-86b0-6f72f25b6327.png&w=1280&q=85"
-  }
-];
+import { getTracks, incrementTrackPlay, getImageAssets } from '../utils/storage';
+import type { Track } from '../utils/storage';
 
 export const MusicPlayerSection: React.FC = () => {
+  const audioRef = useRef<HTMLAudioElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [currentTrackIndex, setCurrentTrackIndex] = useState(2); // Default to Lavender Haze
-  const [currentTime, setCurrentTime] = useState(85); // 1:25 default
+  const [currentTrackIndex, setCurrentTrackIndex] = useState(0); // Default to first track (ALL NIGHT)
+  const [currentTime, setCurrentTime] = useState(0);
   const [volume, setVolume] = useState(80);
-  const [isFollowed, setIsFollowed] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [tracks] = useState<Track[]>(getTracks);
+  const [avatar] = useState<string>(() => getImageAssets().avatar);
 
-  const currentTrack = TRACKS[currentTrackIndex];
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const sourceRef = useRef<MediaElementAudioSourceNode | null>(null);
+  const animationFrameRef = useRef<number>(0);
 
-  // Timer loop for simulation
+  const initAudioContext = () => {
+    if (audioContextRef.current || !audioRef.current) return;
+    try {
+      const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      const ctx = new AudioContextClass();
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 64;
+      
+      audioRef.current.crossOrigin = "anonymous";
+      
+      const source = ctx.createMediaElementSource(audioRef.current);
+      source.connect(analyser);
+      analyser.connect(ctx.destination);
+      
+      audioContextRef.current = ctx;
+      analyserRef.current = analyser;
+      sourceRef.current = source;
+    } catch (err) {
+      console.warn("Failed to initialize Web Audio API Visualizer:", err);
+    }
+  };
+
+  const resumeAudioContext = async () => {
+    initAudioContext();
+    if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
+      await audioContextRef.current.resume();
+    }
+  };
+
+  // Audio Visualizer Canvas Render Loop
+  useEffect(() => {
+    let active = true;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    
+    const draw = () => {
+      if (!active) return;
+      animationFrameRef.current = requestAnimationFrame(draw);
+      
+      const width = canvas.width;
+      const height = canvas.height;
+      ctx.clearRect(0, 0, width, height);
+      
+      const barWidth = 3;
+      const gap = 2;
+      const barCount = Math.floor(width / (barWidth + gap));
+      
+      let dataArray = new Uint8Array(0);
+      if (analyserRef.current && isPlaying) {
+        const bufferLength = analyserRef.current.frequencyBinCount;
+        dataArray = new Uint8Array(bufferLength);
+        analyserRef.current.getByteFrequencyData(dataArray);
+      }
+      
+      for (let i = 0; i < barCount; i++) {
+        let val: number;
+        if (isPlaying) {
+          if (dataArray.length > 0) {
+            const percent = dataArray[i % dataArray.length] / 255;
+            val = percent * height;
+          } else {
+            const time = Date.now() * 0.004;
+            val = (Math.sin(i * 0.3 + time) * 0.4 + 0.6) * height * 0.6;
+            val += Math.random() * 4;
+          }
+        } else {
+          val = 1;
+        }
+        
+        if (isPlaying && val < 2) val = 2;
+        if (val > height) val = height;
+        
+        const x = i * (barWidth + gap);
+        const y = height - val;
+        
+        const gradient = ctx.createLinearGradient(0, height, 0, y);
+        gradient.addColorStop(0, '#E27E00');
+        gradient.addColorStop(1, '#F2BF00');
+        
+        ctx.fillStyle = gradient;
+        ctx.fillRect(x, y, barWidth, val);
+      }
+    };
+    
+    draw();
+    
+    return () => {
+      active = false;
+      cancelAnimationFrame(animationFrameRef.current);
+    };
+  }, [isPlaying]);
+
+  const currentTrack = tracks[currentTrackIndex] || {
+    title: "",
+    artist: "",
+    genre: "",
+    duration: "0:00",
+    durationSeconds: 0,
+    cover: "",
+    src: ""
+  };
+
+  // Timer loop for simulation (only for mock tracks that have no src file)
   useEffect(() => {
     let timer: ReturnType<typeof setInterval>;
-    if (isPlaying) {
+    if (isPlaying && !currentTrack.src) {
       timer = setInterval(() => {
         setCurrentTime((prev) => {
           if (prev >= currentTrack.durationSeconds) {
@@ -60,26 +141,85 @@ export const MusicPlayerSection: React.FC = () => {
       }, 1000);
     }
     return () => clearInterval(timer);
-  }, [isPlaying, currentTrackIndex, currentTrack.durationSeconds]);
+  }, [isPlaying, currentTrackIndex, currentTrack.durationSeconds, currentTrack.src]);
+
+  // Synchronize audio element source and playback state
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    const trackSrc = currentTrack.src;
+    const isNewSource = audio.getAttribute('data-src') !== trackSrc;
+
+    if (trackSrc) {
+      if (isNewSource) {
+        audio.src = trackSrc;
+        audio.setAttribute('data-src', trackSrc);
+        audio.load();
+      }
+
+      if (isPlaying) {
+        audio.play().catch((err) => console.log("Audio play failed:", err));
+      } else {
+        audio.pause();
+      }
+    } else {
+      audio.src = "";
+      audio.removeAttribute('data-src');
+    }
+  }, [currentTrack.src, isPlaying]);
+
+  // Volume control effect
+  useEffect(() => {
+    if (audioRef.current) {
+      audioRef.current.volume = volume / 100;
+    }
+  }, [volume]);
 
   const togglePlay = () => {
-    setIsPlaying(!isPlaying);
+    const nextPlayState = !isPlaying;
+    setIsPlaying(nextPlayState);
+    if (nextPlayState) {
+      resumeAudioContext();
+      if (currentTrack?.title) {
+        incrementTrackPlay(currentTrack.title);
+      }
+    }
   };
 
   const handleTrackSelect = (index: number) => {
     setCurrentTrackIndex(index);
     setCurrentTime(0);
     setIsPlaying(true);
+    resumeAudioContext();
+    const selectedTrack = tracks[index];
+    if (selectedTrack?.title) {
+      incrementTrackPlay(selectedTrack.title);
+    }
   };
 
   const handleNextTrack = () => {
-    setCurrentTrackIndex((prev) => (prev + 1) % TRACKS.length);
+    if (tracks.length === 0) return;
+    const nextIndex = (currentTrackIndex + 1) % tracks.length;
+    setCurrentTrackIndex(nextIndex);
     setCurrentTime(0);
+    resumeAudioContext();
+    const nextTrack = tracks[nextIndex];
+    if (isPlaying && nextTrack?.title) {
+      incrementTrackPlay(nextTrack.title);
+    }
   };
 
   const handlePrevTrack = () => {
-    setCurrentTrackIndex((prev) => (prev - 1 + TRACKS.length) % TRACKS.length);
+    if (tracks.length === 0) return;
+    const prevIndex = (currentTrackIndex - 1 + tracks.length) % tracks.length;
+    setCurrentTrackIndex(prevIndex);
     setCurrentTime(0);
+    resumeAudioContext();
+    const prevTrack = tracks[prevIndex];
+    if (isPlaying && prevTrack?.title) {
+      incrementTrackPlay(prevTrack.title);
+    }
   };
 
   const formatTime = (timeInSeconds: number) => {
@@ -89,11 +229,25 @@ export const MusicPlayerSection: React.FC = () => {
   };
 
   const handleProgressChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setCurrentTime(parseInt(e.target.value));
+    const newTime = parseInt(e.target.value);
+    setCurrentTime(newTime);
+    if (audioRef.current && currentTrack.src) {
+      audioRef.current.currentTime = newTime;
+    }
+  };
+
+  const handleTimeUpdate = () => {
+    if (audioRef.current && currentTrack.src) {
+      setCurrentTime(Math.floor(audioRef.current.currentTime));
+    }
+  };
+
+  const handleTrackEnded = () => {
+    handleNextTrack();
   };
 
   // Filter tracks based on search input query
-  const filteredTracks = TRACKS.map((track, originalIndex) => ({ ...track, originalIndex }))
+  const filteredTracks = tracks.map((track, originalIndex) => ({ ...track, originalIndex }))
     .filter(track => 
       track.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
       track.artist.toLowerCase().includes(searchQuery.toLowerCase())
@@ -104,6 +258,13 @@ export const MusicPlayerSection: React.FC = () => {
       id="music-player" 
       className="bg-[#0C0C0C] py-24 px-4 sm:px-6 md:px-10 w-full relative z-20"
     >
+      {/* Hidden audio element for real playback */}
+      <audio
+        ref={audioRef}
+        onTimeUpdate={handleTimeUpdate}
+        onEnded={handleTrackEnded}
+      />
+
       <div className="max-w-6xl mx-auto flex flex-col items-center">
         {/* Section Heading */}
         <FadeIn delay={0} y={30} as="h2" className="hero-heading font-black uppercase text-center text-[clamp(2.5rem,8vw,110px)] mb-16 sm:mb-20">
@@ -158,27 +319,10 @@ export const MusicPlayerSection: React.FC = () => {
                   </p>
                 </div>
 
-                <div className="flex gap-3 z-10 relative">
-                  <button 
-                    onClick={() => handleTrackSelect(2)}
-                    className="bg-white text-black font-semibold text-xs uppercase tracking-widest px-6 py-2.5 rounded-full hover:scale-105 transition-transform active:scale-95 shadow-lg"
-                  >
-                    PLAY
-                  </button>
-                  <button 
-                    onClick={() => setIsFollowed(!isFollowed)}
-                    className="bg-white/15 backdrop-blur-md border border-white/25 text-white font-semibold text-xs uppercase tracking-widest px-6 py-2.5 rounded-full hover:bg-white/25 transition-all active:scale-95 flex items-center gap-1.5"
-                  >
-                    {isFollowed ? <Check className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />}
-                    {isFollowed ? "FOLLOWED" : "FOLLOW"}
-                  </button>
-                </div>
-
-                {/* New artist photo overlay */}
                 <img
-                  src="/vanzi-photo.jpg"
+                  src={avatar}
                   alt="Vanzi Visual"
-                  className="absolute right-0 top-0 bottom-0 w-[42%] md:w-[45%] h-full object-cover z-10 select-none rounded-r-3xl"
+                  className="absolute right-0 top-0 bottom-0 w-[42%] md:w-[45%] h-full object-cover object-[38%_center] z-10 select-none rounded-r-3xl"
                   draggable="false"
                 />
               </div>
@@ -189,46 +333,82 @@ export const MusicPlayerSection: React.FC = () => {
               <h4 className="text-xs uppercase tracking-widest font-black text-[#D7E2EA] mb-4">
                 TOP TRACKS
               </h4>
-              <div className="flex flex-col gap-3">
+              <div className="flex flex-col gap-3 max-h-[320px] overflow-y-auto pr-1 scrollbar-thin">
                 {filteredTracks.length > 0 ? (
                   filteredTracks.map((track) => {
                     const isActive = currentTrackIndex === track.originalIndex;
                     return (
                       <div 
                         key={track.originalIndex}
-                        className={`flex items-center justify-between p-3 rounded-2xl border transition-all duration-300 group cursor-pointer ${
+                        className={`flex items-center justify-between p-3 rounded-2xl border transition-all duration-500 group cursor-pointer relative overflow-hidden ${
                           isActive 
-                            ? 'bg-[#F2BF00]/15 border-[#F2BF00]/45 shadow-md' 
+                            ? 'liquid-glass-active border-white/20' 
                             : 'bg-[#1c1c1f]/40 border-transparent hover:bg-[#1c1c1f]/80'
                         }`}
                       >
+                        {/* Liquid fluid animated blobs behind the text content */}
+                        {isActive && (
+                          <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none rounded-2xl">
+                            <div className="absolute inset-0 bg-gradient-to-tr from-white/5 via-transparent to-black/10 z-10" />
+                            <div className="absolute -top-[50%] -left-[30%] w-[130px] h-[130px] rounded-full bg-gradient-to-r from-amber-500/20 to-rose-500/15 blur-[20px] animate-liquid-blob-1" />
+                            <div className="absolute -bottom-[50%] -right-[30%] w-[130px] h-[130px] rounded-full bg-gradient-to-r from-cyan-500/15 to-blue-600/20 blur-[20px] animate-liquid-blob-2" />
+                          </div>
+                        )}
+
                         <div 
-                          className="flex items-center gap-3 flex-grow" 
+                          className="flex items-center gap-3 flex-grow min-w-0 relative z-10" 
                           onClick={() => handleTrackSelect(track.originalIndex)}
                         >
-                          <div className="w-12 h-12 rounded-xl overflow-hidden flex-shrink-0 border border-[#D7E2EA]/10">
+                          <div className="w-12 h-12 rounded-xl overflow-hidden flex-shrink-0 border border-[#D7E2EA]/10 bg-[#0c0c0e]">
                             <img src={track.cover} alt={track.title} className="w-full h-full object-cover" />
                           </div>
-                          <div className="flex flex-col text-left max-w-[140px] sm:max-w-[180px]">
-                            <span className="text-xs font-semibold truncate text-[#D7E2EA] group-hover:text-[#F2BF00] transition-colors">
-                              {track.title}
-                            </span>
-                            <span className="text-[10px] text-[#D7E2EA]/50 truncate mt-0.5">
-                              {track.artist}
-                            </span>
+                          <div className="flex flex-col text-left flex-grow min-w-0 overflow-hidden whitespace-nowrap">
+                            <div className="overflow-hidden w-full">
+                              <span 
+                                className={`text-xs font-bold transition-colors ${
+                                  isActive 
+                                    ? 'text-white drop-shadow-[0_2px_4px_rgba(255,255,255,0.25)]' 
+                                    : 'text-[#D7E2EA] group-hover:text-[#F2BF00]'
+                                } ${
+                                  track.title.length > 20 
+                                    ? 'animate-marquee-text' 
+                                    : 'truncate block'
+                                }`}
+                              >
+                                {track.title}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1.5 mt-0.5 overflow-hidden">
+                              <span className="text-[10px] text-[#D7E2EA]/50 truncate">
+                                {track.artist}
+                              </span>
+                              <span className={`text-[8px] sm:text-[9px] px-1.5 py-0.25 rounded border font-mono flex-shrink-0 transition-colors ${
+                                isActive 
+                                  ? 'text-white bg-white/15 border-white/25' 
+                                  : 'text-[#F2BF00]/70 bg-[#F2BF00]/10 border-[#F2BF00]/20'
+                              }`}>
+                                {track.genre}
+                              </span>
+                            </div>
                           </div>
                         </div>
 
-                        <button
-                          onClick={() => isActive ? togglePlay() : handleTrackSelect(track.originalIndex)}
-                          className={`px-4 py-1.5 rounded-full text-[10px] font-bold tracking-widest uppercase transition-all ${
-                            isActive && isPlaying
-                              ? 'bg-white text-black hover:bg-neutral-200 shadow'
-                              : 'border border-[#D7E2EA]/30 text-[#D7E2EA] hover:bg-white hover:text-black hover:border-white'
-                          }`}
-                        >
-                          {isActive && isPlaying ? "STOP" : "PLAY"}
-                        </button>
+                        <div className="w-10 flex justify-end flex-shrink-0 ml-3 relative z-10">
+                          <button
+                            onClick={() => isActive ? togglePlay() : handleTrackSelect(track.originalIndex)}
+                            className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${
+                              isActive && isPlaying
+                                ? 'bg-white text-black hover:bg-neutral-200 shadow'
+                                : 'border border-[#D7E2EA]/30 text-[#D7E2EA] hover:bg-white hover:text-black hover:border-white'
+                            }`}
+                          >
+                            {isActive && isPlaying ? (
+                              <Pause className="w-3.5 h-3.5 fill-current" />
+                            ) : (
+                              <Play className="w-3.5 h-3.5 fill-current ml-0.5" />
+                            )}
+                          </button>
+                        </div>
                       </div>
                     );
                   })
@@ -245,23 +425,30 @@ export const MusicPlayerSection: React.FC = () => {
           {/* 3. Media Player Controls Bar */}
           <div className="w-full bg-[#1b1b1e] border border-[#D7E2EA]/10 rounded-2xl p-4 flex flex-col md:flex-row items-center justify-between gap-4 mt-2">
             
-            {/* Left Track details */}
-            <div className="flex items-center gap-3 w-full md:w-1/4">
-              <div className="w-12 h-12 rounded-xl overflow-hidden flex-shrink-0 border border-[#D7E2EA]/10 shadow animate-pulse">
+            {/* Left side: Spinning Vinyl Cover + Visualizer */}
+            <div className="flex items-center w-full md:flex-1 min-w-0 justify-start gap-4">
+              <div 
+                className={`w-10 h-10 rounded-full overflow-hidden border border-[#D7E2EA]/10 shadow flex-shrink-0 relative ${
+                  isPlaying ? 'animate-[spin_10s_linear_infinite]' : ''
+                }`}
+              >
                 <img src={currentTrack.cover} alt={currentTrack.title} className="w-full h-full object-cover" />
+                {/* Center hole of vinyl record */}
+                <div className="absolute inset-0 m-auto w-2 h-2 rounded-full bg-[#1b1b1e] border border-white/10" />
               </div>
-              <div className="flex flex-col text-left truncate max-w-[200px]">
-                <span className="text-sm font-semibold truncate text-[#D7E2EA]">
-                  {currentTrack.title}
-                </span>
-                <span className="text-xs text-[#D7E2EA]/50 truncate mt-0.5">
-                  {currentTrack.artist}
-                </span>
-              </div>
+              
+              {/* Audio Visualizer Canvas */}
+              <canvas 
+                ref={canvasRef} 
+                className="w-24 h-8 opacity-75 hidden sm:block" 
+                width="96" 
+                height="32" 
+              />
             </div>
 
             {/* Center Controls & Progress bar */}
-            <div className="flex flex-col items-center gap-2 flex-grow w-full md:max-w-xl">
+            <div className="flex flex-col items-center gap-2.5 flex-grow w-full md:max-w-xl">
+              {/* Play buttons group */}
               <div className="flex items-center gap-6 text-[#D7E2EA]/60">
                 <button className="hover:text-white transition-colors">
                   <Shuffle className="w-4 h-4" />
@@ -287,6 +474,20 @@ export const MusicPlayerSection: React.FC = () => {
                 </button>
               </div>
 
+              {/* Compact Track Name & Artist under the Play buttons group */}
+              <div className="flex items-center gap-2 text-[11px] text-[#D7E2EA]/85 bg-black/40 px-3 py-1 rounded-full border border-white/5 max-w-full overflow-hidden whitespace-nowrap">
+                <span className="font-bold text-white truncate max-w-[120px] sm:max-w-[180px]">
+                  {currentTrack.title}
+                </span>
+                <span className="text-white/20">•</span>
+                <span className="text-[#D7E2EA]/60 truncate max-w-[80px] sm:max-w-[120px]">
+                  {currentTrack.artist}
+                </span>
+                <span className="text-[8px] text-[#F2BF00]/85 bg-[#F2BF00]/10 px-1.5 py-0.25 rounded border border-[#F2BF00]/25 font-mono flex-shrink-0">
+                  {currentTrack.genre}
+                </span>
+              </div>
+
               {/* Progress bar slider */}
               <div className="flex items-center gap-3 w-full text-xs font-mono text-[#D7E2EA]/40">
                 <span>{formatTime(currentTime)}</span>
@@ -306,7 +507,7 @@ export const MusicPlayerSection: React.FC = () => {
             </div>
 
             {/* Right Volume control */}
-            <div className="flex items-center gap-2 w-full md:w-1/4 justify-end text-[#D7E2EA]/60">
+            <div className="flex items-center gap-2 w-full md:flex-1 justify-end text-[#D7E2EA]/60">
               <Volume2 className="w-4 h-4" />
               <input
                 type="range"
