@@ -26,6 +26,10 @@ export const MusicPlayerSection: React.FC = () => {
   const [isDspEnabled, setIsDspEnabled] = useState(true);
   const eqRef = useRef<BiquadFilterNode | null>(null);
   const compressorRef = useRef<DynamicsCompressorNode | null>(null);
+  
+  // Workaround for mobile background audio playback (prevents iOS suspension)
+  const audioDestNodeRef = useRef<MediaStreamAudioDestinationNode | null>(null);
+  const bgAudioRef = useRef<HTMLAudioElement | null>(null);
 
   const initAudioContext = () => {
     if (audioContextRef.current || !audioRef.current) return;
@@ -54,6 +58,19 @@ export const MusicPlayerSection: React.FC = () => {
       compressor.attack.setValueAtTime(0.012, ctx.currentTime); // 12ms attack
       compressor.release.setValueAtTime(0.25, ctx.currentTime); // 250ms release
 
+      // Create MediaStreamDestination and background audio element to support background play
+      let dest: AudioNode = ctx.destination;
+      if ('createMediaStreamDestination' in ctx) {
+        const destNode = ctx.createMediaStreamDestination();
+        const bgAudio = document.createElement('audio');
+        bgAudio.id = 'player-bg-audio-elem';
+        bgAudio.srcObject = destNode.stream;
+        
+        audioDestNodeRef.current = destNode;
+        bgAudioRef.current = bgAudio;
+        dest = destNode;
+      }
+
       // Save references
       audioContextRef.current = ctx;
       analyserRef.current = analyser;
@@ -68,9 +85,9 @@ export const MusicPlayerSection: React.FC = () => {
       if (isDspEnabled) {
         analyser.connect(eq);
         eq.connect(compressor);
-        compressor.connect(ctx.destination);
+        compressor.connect(dest);
       } else {
-        analyser.connect(ctx.destination);
+        analyser.connect(dest);
       }
     } catch (err) {
       console.warn("Failed to initialize Web Audio API Visualizer/DSP:", err);
@@ -85,12 +102,14 @@ export const MusicPlayerSection: React.FC = () => {
       eqRef.current.disconnect();
       compressorRef.current.disconnect();
 
+      const dest = audioDestNodeRef.current || audioContextRef.current.destination;
+
       if (isDspEnabled) {
         analyserRef.current.connect(eqRef.current);
         eqRef.current.connect(compressorRef.current);
-        compressorRef.current.connect(audioContextRef.current.destination);
+        compressorRef.current.connect(dest);
       } else {
-        analyserRef.current.connect(audioContextRef.current.destination);
+        analyserRef.current.connect(dest);
       }
     } catch (err) {
       console.warn("Failed to update audio routing:", err);
@@ -195,9 +214,10 @@ export const MusicPlayerSection: React.FC = () => {
     return () => clearInterval(timer);
   }, [isPlaying, currentTrackIndex, currentTrack.durationSeconds, currentTrack.src]);
 
-  // Synchronize audio element source and playback state
+  // Synchronize audio element source, background element source and playback state
   useEffect(() => {
     const audio = audioRef.current;
+    const bgAudio = bgAudioRef.current;
     if (!audio) return;
 
     const trackSrc = currentTrack.src;
@@ -211,15 +231,57 @@ export const MusicPlayerSection: React.FC = () => {
       }
 
       if (isPlaying) {
-        audio.play().catch((err) => console.log("Audio play failed:", err));
+        audio.play().then(() => {
+          if (bgAudio) {
+            bgAudio.play().catch((err) => console.log("bgAudio play failed:", err));
+          }
+        }).catch((err) => console.log("Audio play failed:", err));
       } else {
         audio.pause();
+        if (bgAudio) bgAudio.pause();
       }
     } else {
       audio.src = "";
       audio.removeAttribute('data-src');
+      if (bgAudio) bgAudio.pause();
     }
   }, [currentTrack.src, isPlaying]);
+
+  // Synchronize OS Lock Screen Media Session Controls & Metadata
+  useEffect(() => {
+    if (!('mediaSession' in navigator)) return;
+    const track = tracks[currentTrackIndex];
+    if (!track) return;
+
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: track.title,
+      artist: track.artist || 'DJ VANZI',
+      album: 'VANZI ON DA BEAT',
+      artwork: [
+        { src: window.location.origin + track.cover, sizes: '512x512', type: 'image/jpeg' }
+      ]
+    });
+
+    navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
+
+    // Set action handlers
+    try {
+      navigator.mediaSession.setActionHandler('play', () => {
+        setIsPlaying(true);
+      });
+      navigator.mediaSession.setActionHandler('pause', () => {
+        setIsPlaying(false);
+      });
+      navigator.mediaSession.setActionHandler('previoustrack', () => {
+        handlePrevTrack();
+      });
+      navigator.mediaSession.setActionHandler('nexttrack', () => {
+        handleNextTrack();
+      });
+    } catch (err) {
+      console.warn("Failed to set MediaSession action handlers:", err);
+    }
+  }, [currentTrackIndex, isPlaying, tracks]);
 
   // Volume control effect
   useEffect(() => {
