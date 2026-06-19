@@ -23,6 +23,10 @@ export const MusicPlayerSection: React.FC = () => {
   const sourceRef = useRef<MediaElementAudioSourceNode | null>(null);
   const animationFrameRef = useRef<number>(0);
 
+  const [isDspEnabled, setIsDspEnabled] = useState(true);
+  const eqRef = useRef<BiquadFilterNode | null>(null);
+  const compressorRef = useRef<DynamicsCompressorNode | null>(null);
+
   const initAudioContext = () => {
     if (audioContextRef.current || !audioRef.current) return;
     try {
@@ -34,16 +38,64 @@ export const MusicPlayerSection: React.FC = () => {
       audioRef.current.crossOrigin = "anonymous";
       
       const source = ctx.createMediaElementSource(audioRef.current);
-      source.connect(analyser);
-      analyser.connect(ctx.destination);
       
+      // Create EQ node (boost low-mids for warmth on phone speakers)
+      const eq = ctx.createBiquadFilter();
+      eq.type = 'peaking';
+      eq.frequency.setValueAtTime(120, ctx.currentTime);
+      eq.Q.setValueAtTime(1.0, ctx.currentTime);
+      eq.gain.setValueAtTime(3.5, ctx.currentTime);
+      
+      // Create compressor node (smooth out and master the sound)
+      const compressor = ctx.createDynamicsCompressor();
+      compressor.threshold.setValueAtTime(-24, ctx.currentTime);
+      compressor.knee.setValueAtTime(30, ctx.currentTime);
+      compressor.ratio.setValueAtTime(4, ctx.currentTime); // 4:1 ratio
+      compressor.attack.setValueAtTime(0.012, ctx.currentTime); // 12ms attack
+      compressor.release.setValueAtTime(0.25, ctx.currentTime); // 250ms release
+
+      // Save references
       audioContextRef.current = ctx;
       analyserRef.current = analyser;
       sourceRef.current = source;
+      eqRef.current = eq;
+      compressorRef.current = compressor;
+
+      // Set up initial routing: Source -> Analyser statically
+      source.connect(analyser);
+
+      // Route Analyser dynamically
+      if (isDspEnabled) {
+        analyser.connect(eq);
+        eq.connect(compressor);
+        compressor.connect(ctx.destination);
+      } else {
+        analyser.connect(ctx.destination);
+      }
     } catch (err) {
-      console.warn("Failed to initialize Web Audio API Visualizer:", err);
+      console.warn("Failed to initialize Web Audio API Visualizer/DSP:", err);
     }
   };
+
+  // Dynamically update audio routing when isDspEnabled changes
+  useEffect(() => {
+    if (!audioContextRef.current || !analyserRef.current || !eqRef.current || !compressorRef.current) return;
+    try {
+      analyserRef.current.disconnect();
+      eqRef.current.disconnect();
+      compressorRef.current.disconnect();
+
+      if (isDspEnabled) {
+        analyserRef.current.connect(eqRef.current);
+        eqRef.current.connect(compressorRef.current);
+        compressorRef.current.connect(audioContextRef.current.destination);
+      } else {
+        analyserRef.current.connect(audioContextRef.current.destination);
+      }
+    } catch (err) {
+      console.warn("Failed to update audio routing:", err);
+    }
+  }, [isDspEnabled]);
 
   const resumeAudioContext = async () => {
     initAudioContext();
@@ -290,6 +342,21 @@ export const MusicPlayerSection: React.FC = () => {
                 className="w-full bg-[#1c1c1f] text-sm text-[#D7E2EA] placeholder-[#D7E2EA]/40 pl-9 pr-4 py-2.5 rounded-full border border-transparent focus:border-[#D7E2EA]/20 focus:outline-none transition-colors"
               />
             </div>
+
+            <button 
+              onClick={() => setIsDspEnabled(!isDspEnabled)}
+              className="bg-[#1c1c1f] hover:bg-[#252529] text-xs text-[#D7E2EA] font-semibold py-2 px-4 rounded-full border border-[#D7E2EA]/10 flex items-center gap-2 transition-all shadow-md active:scale-95 cursor-pointer"
+              title="Bật/Tắt hiệu ứng làm ấm âm thanh (DSP Mastering)"
+            >
+              <span 
+                className={`w-2 h-2 rounded-full transition-all duration-300 ${
+                  isDspEnabled 
+                    ? 'bg-[#00c853] shadow-[0_0_8px_#00c853]' 
+                    : 'bg-[#ff5252]'
+                }`}
+              />
+              DSP: {isDspEnabled ? 'ON' : 'OFF'}
+            </button>
           </div>
 
           {/* 2. Middle Grid: Banner (Left) + Top Tracks (Right) */}
